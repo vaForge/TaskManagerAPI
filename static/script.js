@@ -49,9 +49,9 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
 async function toggleTask(id) {
   try {
     const res = await fetch(`${API}/${id}`, { method: "PATCH" });
-    if (!res.ok) throw new Error("Toggle Failed");
+    if (!res.ok) throw new Error(await res.text());
     const updated = await res.json();
-    tasks = task.map((t) => (t.id === id ? updated : t));
+    tasks = tasks.map((t) => (t.id === id ? updated : t));
     render();
   } catch (e) {
     showToast(e.message);
@@ -60,9 +60,9 @@ async function toggleTask(id) {
 
 async function deleteTask(id) {
   try {
-    const res = await fetch(`${API}/${id}$`, { method: "DELETE" });
+    const res = await fetch(`${API}/${id}`, { method: "DELETE" });
     if (!res.ok) throw new Error("Delete failed");
-    tasks = task.filter((t) => t.id !== id);
+    tasks = tasks.filter((t) => t.id !== id);
     render();
   } catch (e) {
     showToast(e.message);
