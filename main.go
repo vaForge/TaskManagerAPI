@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -12,125 +11,152 @@ import (
 	"github.com/vaForge/TaskManagerAPI/models"
 )
 
-func GetHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// tasks stores the in-memory task list.
+// This is temporary storage only.
+// When the server restarts, the data is lost.
+var tasks []models.Task
 
-	w.Header().Set("Content-Type", "text/plain")
+// idCounter generates unique task IDs.
+var idCounter = 1
 
-	fmt.Fprintf(w, "Hello Echo")
-}
-
-func PostHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	body, err := io.ReadAll(r.Body)
-
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/plain")
-
-	fmt.Fprintf(w, "Received Post req with body: %s", string(body))
-
-}
 func main() {
 	mux := http.NewServeMux()
 
-	// collection route :
-	// Get /tasks
-	// POST /tasks
+	// Collection route:
+	// GET  /tasks      -> list all tasks
+	// POST /tasks      -> create a new task
 	mux.HandleFunc("/tasks", tasksHandler)
 
-	//Item route:
-	//Get /tasks/{id}
-	//PUT /tasks/{id}
-	//DELETE /tasks/{id}
-	mux.HandleFunc("/task/", taskByIDHandler)
+	// Item route:
+	// GET    /tasks/{id}    -> get one task
+	// PUT    /tasks/{id}    -> update one task
+	// DELETE /tasks/{id}    -> delete one task
+	mux.HandleFunc("/tasks/", taskByIDHandler)
 
-	//simple home page tester
+	// Simple home page to test the server quickly.
 	mux.HandleFunc("/", homeHandler)
 
-	fmt.Println("Server Listening on http://localhost:8080")
-
+	fmt.Println("Server listening on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }
 
-// A simple welcome endpoint to test server
+// homeHandler is just a small welcome endpoint.
 func homeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain; charsert=utf-8")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprintln(w, "Welcome to the Task Manager API!")
 }
 
+// tasksHandler handles the collection endpoint: /tasks
 func tasksHandler(w http.ResponseWriter, r *http.Request) {
+	// Make sure this handler is only used for the exact /tasks path.
 	if r.URL.Path != "/tasks" {
 		http.NotFound(w, r)
 		return
 	}
 
 	switch r.Method {
-
 	case http.MethodGet:
 		getTasks(w, r)
-
 	case http.MethodPost:
 		createTask(w, r)
-
 	default:
-		//Any method other than GET or POST is not allowed on this end point
 		w.Header().Set("Allow", "GET, POST")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
+// taskByIDHandler handles /tasks/{id}
 func taskByIDHandler(w http.ResponseWriter, r *http.Request) {
-	//Expected : /task/1 or /tasks/2
-	//We trim "/tasks/" prefix and parse the remaining part as int
-
+	// Expected path format:
+	// /tasks/1
+	// /tasks/2
+	//
+	// We trim the "/tasks/" prefix and parse the remaining part as an integer.
 	idStr := strings.TrimPrefix(r.URL.Path, "/tasks/")
 
+	// If the path is just "/tasks/" or malformed, reject it.
 	if idStr == "" || strings.Contains(idStr, "/") {
 		http.Error(w, "invalid task id", http.StatusBadRequest)
 		return
 	}
 
 	taskID, err := strconv.Atoi(idStr)
-	if err != nil {
+	if err != nil || taskID <= 0 {
 		http.Error(w, "invalid task id", http.StatusBadRequest)
 		return
 	}
 
 	switch r.Method {
-
 	case http.MethodGet:
 		getTaskByID(w, r, taskID)
 	case http.MethodPut:
 		updateTaskByID(w, r, taskID)
 	case http.MethodDelete:
 		deleteTaskByID(w, r, taskID)
-
 	default:
-		w.Header().Set("Allow", "GET,PUT, DELETE")
+		w.Header().Set("Allow", "GET, PUT, DELETE")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
-
 }
 
+// getTasks returns all tasks as a JSON array.
+func getTasks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Encode the full slice into JSON.
+	// Example output:
+	// [
+	//   {"id":1,"description":"Learn Go","status":false,"priority":1}
+	// ]
+	if err := json.NewEncoder(w).Encode(tasks); err != nil {
+		http.Error(w, "failed to encode tasks", http.StatusInternalServerError)
+		return
+	}
+}
+
+// createTask reads a JSON body, assigns an ID, and stores the task.
+func createTask(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	var newTask models.Task
+
+	// Decode JSON directly from request body.
+	if err := json.NewDecoder(r.Body).Decode(&newTask); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// Basic validation.
+	if strings.TrimSpace(newTask.Description) == "" {
+		http.Error(w, "description is required", http.StatusBadRequest)
+		return
+	}
+
+	// Server controls the ID.
+	newTask.ID = idCounter
+	idCounter++
+
+	// Save in memory.
+	tasks = append(tasks, newTask)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	// Return the created task.
+	if err := json.NewEncoder(w).Encode(newTask); err != nil {
+		http.Error(w, "failed to encode created task", http.StatusInternalServerError)
+		return
+	}
+}
+
+// getTaskByID finds one task and returns it as JSON.
 func getTaskByID(w http.ResponseWriter, r *http.Request, taskID int) {
 	task, found := findTaskByID(taskID)
-
 	if !found {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
@@ -143,23 +169,27 @@ func getTaskByID(w http.ResponseWriter, r *http.Request, taskID int) {
 	}
 }
 
+// updateTaskByID updates one task by ID.
 func updateTaskByID(w http.ResponseWriter, r *http.Request, taskID int) {
 	defer r.Body.Close()
 
 	index, found := findTaskIndexByID(taskID)
-
 	if !found {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
 
+	// Read the updated data from the request body.
 	var updatedTask models.Task
 	if err := json.NewDecoder(r.Body).Decode(&updatedTask); err != nil {
-		http.Error(w, "invalid JSON format", http.StatusBadRequest)
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
 
+	// Keep the original ID.
 	updatedTask.ID = taskID
+
+	// Replace the old task with the new one.
 	tasks[index] = updatedTask
 
 	w.Header().Set("Content-Type", "application/json")
@@ -167,74 +197,24 @@ func updateTaskByID(w http.ResponseWriter, r *http.Request, taskID int) {
 		http.Error(w, "failed to encode updated task", http.StatusInternalServerError)
 		return
 	}
-
 }
+
+// deleteTaskByID removes a task from the slice.
 func deleteTaskByID(w http.ResponseWriter, r *http.Request, taskID int) {
-
 	index, found := findTaskIndexByID(taskID)
-
 	if !found {
 		http.Error(w, "task not found", http.StatusNotFound)
 		return
 	}
 
+	// Remove the item at index from the slice.
 	tasks = append(tasks[:index], tasks[index+1:]...)
 
-	//204 Content means deletion succeeded and no response body is needed
-
+	// 204 No Content means deletion succeeded and no response body is needed.
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func getTasks(w http.ResponseWriter, r *http.Request) {
-
-	w.Header().Set("Content-Type", "application/json")
-
-	//Encode the whole slice at once
-	//This returns a valid JSON like
-	// [
-	// 	{..},
-	// 	{...}
-	// ]
-
-	if err := json.NewEncoder(w).Encode(tasks); err != nil {
-		http.Error(w, "failed to encode tasks", http.StatusInternalServerError)
-		return
-	}
-}
-
-func createTask(w http.ResponseWriter, r *http.Request) {
-
-	defer r.Body.Close()
-
-	//Decode JSON directly from request body.
-	//Cleaner than io.ReadAll + json.Unmarshal for APIs
-	var newTask models.Task
-
-	if err := json.NewDecoder(r.Body).Decode(&newTask); err != nil {
-
-		http.Error(w, "invalid JSON body", http.StatusBadRequest) //400 Bad Request
-		return
-	}
-
-	newTask.ID = idCounter
-	idCounter++
-	//save tasks
-	tasks = append(tasks, newTask)
-
-	//Return a proper JSON with 201 Created
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated) //201 Created
-
-	//Send the created task back to client
-	//This helps client see the generated ID immediately
-	if err := json.NewEncoder(w).Encode(newTask); err != nil {
-		http.Error(w, "failed to encode created task", http.StatusInternalServerError) //500
-		return
-	}
-
-}
-
-// FindtaskbyId returns the task and whether it exists
+// findTaskByID returns the task and whether it exists.
 func findTaskByID(taskID int) (models.Task, bool) {
 	for _, task := range tasks {
 		if task.ID == taskID {
