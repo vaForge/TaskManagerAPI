@@ -83,12 +83,7 @@ func (h *TaskHandler) TaskByIDHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *TaskHandler) getTasks(w http.ResponseWriter, r *http.Request) {
 
-	w.Header().Set("Content-Type", "application/json")
-
-	if err := json.NewEncoder(w).Encode(h.Store.GetAll()); err != nil {
-		http.Error(w, "failed to encode tasks", http.StatusInternalServerError)
-		return
-	}
+	writeJSON(w, http.StatusOK, h.Store.GetAll())
 }
 
 func (h *TaskHandler) createTask(w http.ResponseWriter, r *http.Request) {
@@ -98,24 +93,18 @@ func (h *TaskHandler) createTask(w http.ResponseWriter, r *http.Request) {
 
 	// Decode JSON directly from request body.
 	if err := json.NewDecoder(r.Body).Decode(&newTask); err != nil {
-		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
 	createdTask, err := h.Store.Create(newTask)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-
-	if err := json.NewEncoder(w).Encode(createdTask); err != nil {
-		http.Error(w, "failed to encode task", http.StatusInternalServerError)
-		return
-	}
+	writeJSON(w, http.StatusCreated, createdTask)
 }
 
 func (h *TaskHandler) getTaskByID(w http.ResponseWriter, r *http.Request, taskID int) {
@@ -123,15 +112,11 @@ func (h *TaskHandler) getTaskByID(w http.ResponseWriter, r *http.Request, taskID
 	task, found := h.Store.GetByID(taskID)
 
 	if !found {
-		http.Error(w, "task not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "task not found")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(task); err != nil {
-		http.Error(w, "failed to encode task", http.StatusInternalServerError)
-		return
-	}
+	writeJSON(w, http.StatusOK, task)
 }
 
 func (h *TaskHandler) updateTaskByID(w http.ResponseWriter, r *http.Request, taskID int) {
@@ -141,7 +126,7 @@ func (h *TaskHandler) updateTaskByID(w http.ResponseWriter, r *http.Request, tas
 	var updatedTask models.Task
 
 	if err := json.NewDecoder(r.Body).Decode(&updatedTask); err != nil {
-		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
@@ -149,24 +134,20 @@ func (h *TaskHandler) updateTaskByID(w http.ResponseWriter, r *http.Request, tas
 
 	if err != nil {
 		if err.Error() == "task not found" {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(result); err != nil {
-		http.Error(w, "failed to encode updated task", http.StatusInternalServerError)
-		return
-	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *TaskHandler) deleteTaskByID(w http.ResponseWriter, r *http.Request, taskID int) {
 
 	if err := h.Store.Delete(taskID); err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 

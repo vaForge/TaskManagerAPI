@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/vaForge/TaskManagerAPI/handlers"
+	"github.com/vaForge/TaskManagerAPI/middleware"
 	"github.com/vaForge/TaskManagerAPI/store"
 )
 
@@ -25,8 +26,14 @@ func main() {
 	// home route
 	mux.HandleFunc("/", homeHandler)
 
+	//Wrap the mux with middleware
+	// Request flow becomes :
+	// logging -> recover -> route handler
+
+	finalHandler := middleware.Logging(middleware.Recover(mux))
+
 	fmt.Println("Server Listening on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Fatal(http.ListenAndServe(":8080", finalHandler))
 
 }
 
