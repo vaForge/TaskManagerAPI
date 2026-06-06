@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -11,10 +12,35 @@ import (
 	"github.com/vaForge/TaskManagerAPI/models"
 )
 
-var tasks []models.Task
+func GetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-var idCounter int = 1
+	w.Header().Set("Content-Type", "text/plain")
 
+	fmt.Fprintf(w, "Hello Echo")
+}
+
+func PostHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+
+	fmt.Fprintf(w, "Received Post req with body: %s", string(body))
+
+}
 func main() {
 	mux := http.NewServeMux()
 
