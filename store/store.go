@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/vaForge/TaskManagerAPI/models"
+	"github.com/vaForge/TaskManagerAPI/validation"
 )
 
 //Store holds task data in memory now
@@ -44,8 +45,8 @@ func (s *Store) Create(task models.Task) (models.Task, error) {
 
 	task.Description = strings.TrimSpace(task.Description)
 
-	if task.Description == "" {
-		return models.Task{}, errors.New("description is required")
+	if err := validation.ValidateTask(task); err != nil {
+		return models.Task{}, err
 	}
 
 	task.ID = s.nextID
@@ -73,14 +74,55 @@ func (s *Store) Update(id int, updated models.Task) (models.Task, error) {
 	}
 
 	updated.Description = strings.TrimSpace(updated.Description)
-	if updated.Description == "" {
-		return models.Task{}, errors.New("description is required")
+
+	if err := validation.ValidateTask(updated); err != nil {
+		return models.Task{}, err
 	}
 
 	updated.ID = id
 	s.tasks[index] = updated
 
 	return updated, nil
+}
+
+// Patch updates only  the fields that were provided .
+// This is a typical PATCH behavior
+
+func (s *Store) Patch(id int, patch models.TaskPatch) (models.Task, error) {
+
+	index := -1
+	for i, task := range s.tasks {
+		if task.ID == id {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		return models.Task{}, errors.New("task not found")
+	}
+
+	// Start from the existing task.
+	task := s.tasks[index]
+
+	// Apply only the fields that were provided.
+	if patch.Description != nil {
+		task.Description = strings.TrimSpace(*patch.Description)
+	}
+	if patch.Status != nil {
+		task.Status = *patch.Status
+	}
+	if patch.Priority != nil {
+		task.Priority = *patch.Priority
+	}
+
+	// Validate the final task after patching.
+	if err := validation.ValidateTask(task); err != nil {
+		return models.Task{}, err
+	}
+
+	s.tasks[index] = task
+	return task, nil
 }
 
 // Delete remove a task by ID

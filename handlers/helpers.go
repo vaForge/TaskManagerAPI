@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/vaForge/TaskManagerAPI/validation"
 )
 
 // WriteJSON sends a JSON response with given status code.
@@ -27,4 +29,13 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{
 		"error": message,
 	})
+}
+
+func requireJSONContentType(w http.ResponseWriter, r *http.Request) bool {
+
+	if !validation.IsJSONContentType(r) {
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return false
+	}
+	return true
 }

@@ -58,13 +58,13 @@ func (h *TaskHandler) TaskByIDHandler(w http.ResponseWriter, r *http.Request) {
 
 	// If the path is just "/tasks/" or malformed, reject it.
 	if idStr == "" || strings.Contains(idStr, "/") {
-		http.Error(w, "invalid task id", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid task id")
 		return
 	}
 
 	taskID, err := strconv.Atoi(idStr)
 	if err != nil || taskID <= 0 {
-		http.Error(w, "invalid task id", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid task id")
 		return
 	}
 
@@ -73,6 +73,8 @@ func (h *TaskHandler) TaskByIDHandler(w http.ResponseWriter, r *http.Request) {
 		h.getTaskByID(w, r, taskID)
 	case http.MethodPut:
 		h.updateTaskByID(w, r, taskID)
+	case http.MethodPatch:
+		h.patchTaskByID(w, r, taskID)
 	case http.MethodDelete:
 		h.deleteTaskByID(w, r, taskID)
 	default:
@@ -88,6 +90,10 @@ func (h *TaskHandler) getTasks(w http.ResponseWriter, r *http.Request) {
 
 func (h *TaskHandler) createTask(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+
+	if !requireJSONContentType(w, r) {
+		return
+	}
 
 	var newTask models.Task
 
@@ -123,6 +129,10 @@ func (h *TaskHandler) updateTaskByID(w http.ResponseWriter, r *http.Request, tas
 
 	defer r.Body.Close()
 
+	if !requireJSONContentType(w, r) {
+		return
+	}
+
 	var updatedTask models.Task
 
 	if err := json.NewDecoder(r.Body).Decode(&updatedTask); err != nil {
@@ -135,6 +145,35 @@ func (h *TaskHandler) updateTaskByID(w http.ResponseWriter, r *http.Request, tas
 	if err != nil {
 		if err.Error() == "task not found" {
 			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *TaskHandler) patchTaskByID(w http.ResponseWriter, r *http.Request, taskID int) {
+
+	defer r.Body.Close()
+
+	if !requireJSONContentType(w, r) {
+		return
+	}
+
+	var patch models.TaskPatch
+
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	result, err := h.Store.Patch(taskID, patch)
+
+	if err != nil {
+		if err.Error() == "task not found" {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		writeError(w, http.StatusBadRequest, err.Error())
