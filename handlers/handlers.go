@@ -78,7 +78,7 @@ func (h *TaskHandler) TaskByIDHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		h.deleteTaskByID(w, r, taskID)
 	default:
-		w.Header().Set("Allow", "GET, PUT, DELETE")
+		w.Header().Set("Allow", "GET, PUT, DELETE, PATCH")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }

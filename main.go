@@ -66,6 +66,12 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
+	/*
+				make(chan os.Signal, 1): You create a channel (a pipe for sending data between goroutines) of type os.Signal. The 1 means it is a "buffered" channel with a capacity of 1. The OS can drop exactly one signal into this pipe without waiting for anything to read it.
+
+		signal.Notify: This binds the channel to the operating system. You are telling the Go runtime: "If the OS sends a SIGINT (Ctrl+C) or SIGTERM (kill command), don't crash the app. Instead, intercept it and push that signal into the stop channel."
+	*/
+
 	go func() {
 		sig := <-stop
 		logger.Info("shutdown signal received", "signal", sig.String())
