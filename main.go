@@ -1,40 +1,99 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/vaForge/TaskManagerAPI/config"
 	"github.com/vaForge/TaskManagerAPI/handlers"
 	"github.com/vaForge/TaskManagerAPI/middleware"
 	"github.com/vaForge/TaskManagerAPI/store"
 )
 
+// Now We change the flow from logger->recover->mux | mux -> handler ->response
+// To : request -> CORS -> requestID
+//
+//	-> panic recovery -> logging -> mux -> handlers
 func main() {
-	// Create taskStore
-	taskStore := store.NewStore()
 
-	//Create taskhandlers
-	taskhandler := handlers.NewTaskHandler(taskStore)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
+
+	// Create taskStore & taskHandler
+	taskStore := store.NewStore()
+	taskHandler := handlers.NewTaskHandler(taskStore)
 
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("/healthz", healthHandler)
 	//collection routes
-	mux.HandleFunc("/tasks", taskhandler.TaskHandler)
+	mux.HandleFunc("/tasks", taskHandler.TaskHandler)
 	// Item routes
-	mux.HandleFunc("/tasks/", taskhandler.TaskByIDHandler)
+	mux.HandleFunc("/tasks/", taskHandler.TaskByIDHandler)
 	// home route
 	mux.HandleFunc("/", homeHandler)
 
-	//Wrap the mux with middleware
-	// Request flow becomes :
-	// logging -> recover -> route handler
+	finalHandler := middleware.Logging(
+		middleware.Recover(
+			middleware.RequestID(
+				middleware.CORS(mux),
+			),
+		),
+	)
 
-	finalHandler := middleware.Logging(middleware.Recover(mux))
+	srv := &http.Server{
+		Addr:         cfg.Addr(),
+		Handler:      finalHandler,
+		ReadTimeout:  cfg.IdleTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		IdleTimeout:  cfg.IdleTimeout,
+	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-stop
+		logger.Info("shutdown signal received", "signal", sig.String())
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(ctx); err != nil {
+			logger.Error("graceful shutdown failed", "error", err)
+		}
+	}()
 
 	fmt.Println("Server Listening on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", finalHandler))
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
+	logger.Info("server stopped cleanly")
+}
 
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprintln(w, `{"status":"ok"}`)
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
