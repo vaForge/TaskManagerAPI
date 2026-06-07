@@ -87,7 +87,7 @@ func main() {
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 
-	if r.URL.Path != "/" {
+	if r.URL.Path != "/healthz" {
 		http.NotFound(w, r)
 		return
 	}
