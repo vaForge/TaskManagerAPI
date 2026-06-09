@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,6 +15,12 @@ type Config struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
+
+	//APIKeyHeader is the header that clients must send
+	APIKeyHeader string
+
+	//APIKeys are the allowed keys
+	APIKeys []string
 }
 
 // Addr returns the host:port string for http.Server
@@ -35,6 +42,8 @@ func Load() (*Config, error) {
 		ReadTimeout:  envDur("READ_TIMEOUT", 5*time.Second),
 		WriteTimeout: envDur("WRITE_TIMEOUT", 10*time.Second),
 		IdleTimeout:  envDur("IDLE_TIMEOUT", 60*time.Second),
+		APIKeyHeader: envStr("API_KEY_HEADER", "X-Api-Key"),
+		APIKeys:      envList("API_KEYS"),
 	}, nil
 }
 
@@ -73,4 +82,22 @@ func envDur(key string, def time.Duration) time.Duration {
 	}
 
 	return d
+}
+
+func envList(key string) []string {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, " ")
+	out := make([]string, 0, len(parts))
+
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

@@ -47,10 +47,19 @@ func main() {
 	// home route
 	mux.HandleFunc("/", homeHandler)
 
+	/*
+		mux.HandleFunc("/panic", func(w http.ResponseWriter, r *http.Request) {
+			panic("test panic")
+		})
+	*/
+	apiAuth := middleware.NewAPIKeyAuth(cfg.APIKeyHeader, cfg.APIKeys)
+
 	finalHandler := middleware.Logging(
 		middleware.Recover(
 			middleware.RequestID(
-				middleware.CORS(mux),
+				middleware.CORS(
+					apiAuth.Middleware(mux),
+				),
 			),
 		),
 	)
@@ -58,7 +67,7 @@ func main() {
 	srv := &http.Server{
 		Addr:         cfg.Addr(),
 		Handler:      finalHandler,
-		ReadTimeout:  cfg.IdleTimeout,
+		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,
 	}
@@ -67,9 +76,11 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	/*
-				make(chan os.Signal, 1): You create a channel (a pipe for sending data between goroutines) of type os.Signal. The 1 means it is a "buffered" channel with a capacity of 1. The OS can drop exactly one signal into this pipe without waiting for anything to read it.
+		make(chan os.Signal, 1): You create a channel (a pipe for sending data between goroutines) of type os.Signal.
+		The 1 means it is a "buffered" channel with a capacity of 1. The OS can drop exactly one signal into this pipe without waiting for anything to read it.
 
-		signal.Notify: This binds the channel to the operating system. You are telling the Go runtime: "If the OS sends a SIGINT (Ctrl+C) or SIGTERM (kill command), don't crash the app. Instead, intercept it and push that signal into the stop channel."
+		signal.Notify: This binds the channel to the operating system. You are telling the Go runtime: "If the OS sends a SIGINT (Ctrl+C) or SIGTERM (kill command), don't crash the app.
+		Instead, intercept it and push that signal into the stop channel."
 	*/
 
 	go func() {
